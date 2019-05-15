@@ -22,6 +22,12 @@
  * the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
+/* Set this environment variable to the UMC fuse mount point to control a
+ * usermode DRBD server rather than a kernel-based server.
+ */
+#define UMC_FS_ROOT_ENV "UMC_FS_ROOT"
+#define DO_NODE_PREEXISTS_CHECK()   !getenv(UMC_FS_ROOT_ENV)
+
 #define _GNU_SOURCE
 #define _XOPEN_SOURCE 600
 #define _FILE_OFFSET_BITS 64
@@ -1230,7 +1236,7 @@ static int _generic_config_cmd(struct drbd_cmd *cm, int argc, char **argv)
 		goto error;
 	}
 
-	if (strcmp(cm->cmd, "new-minor") == 0) {
+	if (strcmp(cm->cmd, "new-minor") == 0 && DO_NODE_PREEXISTS_CHECK()) {
 /* HACK */
 /* hack around "sysfs: cannot create duplicate filename '/devices/virtual/bdi/147:0'"
  * and subsequent NULL deref in kernel below add_disk(). */

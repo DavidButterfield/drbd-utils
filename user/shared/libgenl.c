@@ -8,6 +8,14 @@
 
 #include "config.h"
 
+/* For use of IPv4 rather than netlink */
+#define UMC_FS_ROOT_ENV		"UMC_FS_ROOT"
+#define USE_IP_FOR_NETLINK()	getenv(UMC_FS_ROOT_ENV)
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#define UMC_IP_NETLINK_ADDR 0x7f000001
+#define UMC_IP_NETLINK_PORT 1234u	//XXX arbitrary but well-known
+
 int genl_join_mc_group(struct genl_sock *s, const char *name) {
 	int g_id;
 	int i;
@@ -39,39 +47,70 @@ int genl_join_mc_group(struct genl_sock *s, const char *name) {
 static struct genl_sock *genl_connect(__u32 nl_groups)
 {
 	struct genl_sock *s = calloc(1, sizeof(*s));
+	struct sockaddr * sock_addrp;
 	socklen_t sock_len;
+	int address_family, protocol;
 	int bsz = 1 << 20;
 
 	if (!s)
 		return NULL;
 
-	/* autobind; kernel is responsible to give us something unique
-	 * in bind() below. */
-	s->s_local.nl_pid = 0;
-	s->s_local.nl_family = AF_NETLINK;
-	/*
-	 * If we want to receive multicast traffic on this socket, kernels
-	 * before v2.6.23-rc1 require us to indicate which multicast groups we
-	 * are interested in in nl_groups.
-	 */
-	s->s_local.nl_groups = nl_groups;
-	s->s_peer.nl_family = AF_NETLINK;
+	if (!USE_IP_FOR_NETLINK()) {
+		/* autobind; kernel is responsible to give us something unique
+		 * in bind() below. */
+		s->s_local.nl_pid = 0;
+		s->s_local.nl_family = address_family = AF_NETLINK;
+		protocol = NETLINK_GENERIC;
+		sock_addrp = (struct sockaddr *)&s->s_local;
+		sock_len = sizeof(s->s_local);
+		/*
+		 * If we want to receive multicast traffic on this socket, kernels
+		 * before v2.6.23-rc1 require us to indicate which multicast groups we
+		 * are interested in in nl_groups.
+		 */
+		s->s_local.nl_groups = nl_groups;
+		s->s_peer.nl_family = address_family;
+	} else {
+		s->s_local_in.sin_port = 0;
+		s->s_local_in.sin_family = address_family = AF_INET;
+		protocol = 0;
+		sock_addrp = (struct sockaddr *)&s->s_local_in;
+		sock_len = sizeof(s->s_local_in);
+		s->s_peer_in.sin_family = address_family;
+		s->s_peer_in.sin_addr.s_addr = htonl(UMC_IP_NETLINK_ADDR);
+		s->s_peer_in.sin_port = htons(UMC_IP_NETLINK_PORT);
+	}
+
 	/* start with some sane sequence number */
 	s->s_seq_expect = s->s_seq_next = time(0);
 
-	s->s_fd = socket(AF_NETLINK, SOCK_DGRAM, NETLINK_GENERIC);
+	s->s_fd = socket(address_family, SOCK_DGRAM, protocol);
 	if (s->s_fd == -1)
 		goto fail;
 
-	sock_len = sizeof(s->s_local);
 	DO_OR_LOG_AND_FAIL(setsockopt(s->s_fd, SOL_SOCKET, SO_SNDBUF, &bsz, sizeof(bsz)));
 	DO_OR_LOG_AND_FAIL(setsockopt(s->s_fd, SOL_SOCKET, SO_RCVBUF, &bsz, sizeof(bsz)));
-	DO_OR_LOG_AND_FAIL(bind(s->s_fd, (struct sockaddr*) &s->s_local, sizeof(s->s_local)));
-	DO_OR_LOG_AND_FAIL(getsockname(s->s_fd, (struct sockaddr*) &s->s_local, &sock_len));
+	DO_OR_LOG_AND_FAIL(bind(s->s_fd, sock_addrp, sock_len));
+	DO_OR_LOG_AND_FAIL(getsockname(s->s_fd, sock_addrp, &sock_len));
 
-	dbg(3, "bound socket to nl_pid:%u, my pid:%u, len:%u, sizeof:%u\n",
-		s->s_local.nl_pid, getpid(),
-		(unsigned)sock_len, (unsigned)sizeof(s->s_local));
+	if (!USE_IP_FOR_NETLINK()) {
+		dbg(3, "bound socket to nl_pid:%u, my pid:%u, len:%u, sizeof:%u\n",
+			s->s_local.nl_pid, getpid(),
+			(unsigned)sock_len, (unsigned)sizeof(s->s_local));
+	} else {
+		dbg(3, "bound socket to port:%u, my pid:%u, len:%u, sizeof:%u\n",
+			ntohs(s->s_local_in.sin_port), getpid(),
+			(unsigned)sock_len, (unsigned)sizeof(s->s_local_in));
+
+		if (connect(s->s_fd, (struct sockaddr*) &s->s_peer_in, sizeof(s->s_peer_in))) {
+		    perror("netlink connect: ");
+		    goto fail;
+		}
+
+		dbg(3, "connected to port:%u, my pid:%u, len:%u, sizeof:%u\n",
+			ntohs(s->s_peer_in.sin_port), getpid(),
+			(unsigned)sock_len, (unsigned)sizeof(s->s_local_in));
+	}
 
 	return s;
 
@@ -103,7 +142,11 @@ int genl_send(struct genl_sock *s, struct msg_buff *msg)
 	n->nlmsg_len = msg->tail - msg->data;
 	n->nlmsg_flags |= NLM_F_REQUEST;
 	n->nlmsg_seq = s->s_seq_expect = s->s_seq_next++;
-	n->nlmsg_pid = s->s_local.nl_pid;
+
+	if (!USE_IP_FOR_NETLINK())
+		n->nlmsg_pid = s->s_local.nl_pid;
+	else
+		n->nlmsg_pid = ntohs(s->s_local_in.sin_port);
 
 #define LOCAL_DEBUG_LEVEL 3
 #if LOCAL_DEBUG_LEVEL <= DEBUG_LEVEL
@@ -125,12 +168,17 @@ int genl_send(struct genl_sock *s, struct msg_buff *msg)
  */
 int genl_recv_timeout(struct genl_sock *s, struct iovec *iov, int timeout_ms)
 {
-	struct sockaddr_nl addr;
+	struct sockaddr_nl addr_nl;
+	struct sockaddr_in addr_in;
 	struct pollfd pfd;
 	int flags;
 	struct msghdr msg = {
-		.msg_name = &addr,
-		.msg_namelen = sizeof(struct sockaddr_nl),
+		.msg_name = USE_IP_FOR_NETLINK()
+				    ? (struct sockaddr *)&addr_in
+				    : (struct sockaddr *)&addr_nl,
+		.msg_namelen = USE_IP_FOR_NETLINK()
+				    ? sizeof(struct sockaddr_in)
+				    : sizeof(struct sockaddr_nl),
 		.msg_iov = iov,
 		.msg_iovlen = 1,
 		.msg_control = NULL,
@@ -187,14 +235,26 @@ retry:
 		goto retry;
 	}
 
-	if (msg.msg_namelen != sizeof(struct sockaddr_nl))
-		return -E_RCV_NO_SOURCE_ADDR;
+	if (!USE_IP_FOR_NETLINK()) {
+		if (msg.msg_namelen != sizeof(struct sockaddr_nl))
+			return -E_RCV_NO_SOURCE_ADDR;
 
-	if (addr.nl_pid != 0) {
-		dbg(3, "ignoring message from sender pid %u != 0\n",
-				addr.nl_pid);
-		goto retry;
+		if (addr_nl.nl_pid != 0) {
+			dbg(3, "ignoring message from sender pid %u != 0\n",
+					addr_nl.nl_pid);
+			goto retry;
+		}
+	} else {
+		if (msg.msg_namelen != sizeof(struct sockaddr_in))
+			return -E_RCV_NO_SOURCE_ADDR;
+
+		if (addr_in.sin_port != htons(UMC_IP_NETLINK_PORT)) {
+			dbg(3, "ignoring message from sender port %u != 0\n",
+					ntohs(addr_in.sin_port));
+			goto retry;
+		}
 	}
+
 	return n;
 }
 
@@ -271,7 +331,7 @@ static struct genl_family genl_ctrl = {
         .maxattr = CTRL_ATTR_MAX,
 };
 
-struct genl_sock *genl_connect_to_family(struct genl_family *family)
+static struct genl_sock *genl_connect_to_family_netlink(struct genl_family *family)
 {
 	struct genl_sock *s = NULL;
 	struct msg_buff *msg;
@@ -375,6 +435,31 @@ out:
 	msg_free(msg);
 
 	return s;
+}
+
+static struct genl_sock *genl_connect_to_family_inet(struct genl_family *family)
+{
+	struct genl_sock *s = NULL;
+
+	s = genl_connect(family->nl_groups);
+	if (!s) {
+		dbg(1, "error creating netlink socket");
+		goto out;
+	}
+
+	family->id = 17;	/* not random */
+	family->version = 2;
+	family->hdrsize = 8;
+
+out:
+	return s;
+}
+
+struct genl_sock *genl_connect_to_family(struct genl_family *family)
+{
+	return USE_IP_FOR_NETLINK()
+	    ? genl_connect_to_family_inet(family)
+	    : genl_connect_to_family_netlink(family);
 }
 
 /* Shared nla code from Lars has been moved to libnla.c */

@@ -18,6 +18,8 @@ License="GPL v2+"
 # use the (deprecated) singular.
 : ${DRBD_PEERS:=$DRBD_PEER}
 
+PROC_DRBD=$UMC_FS_ROOT/proc/drbd
+
 PROG=${0##*/}
 : ${DEBUG:=1}
 LOG_PRIO=daemon.warning
@@ -43,8 +45,8 @@ all_minors_up_to_date()
 	local minor_regex="^ *($*): cs:"
 	IFS=$_OLDIFS
 
-	# grep -c -Ee '^ *(m|i|n|o|r|s): cs:.* ds:UpToDate' /proc/drbd
-	local proc_drbd=$(</proc/drbd)
+	# grep -c -Ee '^ *(m|i|n|o|r|s): cs:.* ds:UpToDate' $PROC_DRBD
+	local proc_drbd=$(<$PROC_DRBD)
 	local minors_of_resource=$(echo "$proc_drbd" | grep -E -e "$minor_regex")
 	local n_up_to_date=$(echo "$minors_of_resource" | grep -c -e "ds:UpToDate")
 

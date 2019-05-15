@@ -14,6 +14,8 @@
 
 export LC_ALL=C LANG=C
 
+PROC_DRBD=$UMC_FS_ROOT/proc/drbd
+
 if [[ -z "$DRBD_RESOURCE" || -z "$DRBD_LL_DISK" ]]; then
 	echo "DRBD_RESOURCE/DRBD_LL_DISK is not set. This script is supposed to"
 	echo "get called by drbdadm as a handler script"
@@ -148,7 +150,7 @@ else
 				s/^.* oos:\([0-9]*\).*$/\1/;
 				s/^$/0/; # default if not found
 				p;
-				q; }' < /proc/drbd) # unit KiB
+				q; }' < $PROC_DRBD) # unit KiB
 		SNAP_SIZE=$((OUT_OF_SYNC + SNAP_ADDITIONAL + LV_SIZE_K * SNAP_PERC / 100))
 		lvcreate -s -n $SNAP_NAME -L ${SNAP_SIZE}k $LVC_OPTIONS $VG_NAME/$LV_NAME
 	)

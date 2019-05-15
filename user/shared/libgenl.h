@@ -22,6 +22,7 @@
 #include <linux/types.h>
 #include <linux/netlink.h>
 #include <linux/genetlink.h>
+#include <netinet/in.h>
 
 #ifdef WINDRBD
 #include <windows.h>		/* for HANDLE */
@@ -1055,8 +1056,14 @@ static inline int genlmsg_total_size(int payload)
  */
 struct genl_sock {
 #ifndef WINDRBD
-	struct sockaddr_nl	s_local;
-	struct sockaddr_nl	s_peer;
+	union {
+	    struct sockaddr_nl	s_local;
+	    struct sockaddr_in	s_local_in;
+	};
+	union {
+	    struct sockaddr_nl	s_peer;
+	    struct sockaddr_in	s_peer_in;
+	};
 	int			s_fd;
 #else
 	HANDLE			s_handle;

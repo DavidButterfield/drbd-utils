@@ -256,8 +256,10 @@ int v07_style_md_open_device(struct format *cfg)
 		exit(20);
 	}
 
+#define UMC_FS_ROOT_ENV	  "UMC_FS_ROOT"
+#define DO_ISBLK_CHECK()  !getenv(UMC_FS_ROOT_ENV)  /* skip ISBLK check in usermode */
 	if (!S_ISBLK(sb.st_mode)) {
-		if (!force) {
+		if (!force && DO_ISBLK_CHECK()) {
 			fprintf(stderr, "'%s' is not a block device!\n",
 				cfg->md_device_name);
 			exit(20);

@@ -67,6 +67,8 @@
 #######################################################################
 # Initialization:
 
+PROC_DRBD=$UMC_FS_ROOT/proc/drbd
+
 # Resource-agents have moved their ocf-shellfuncs file around.
 # There are supposed to be symlinks or wrapper files in the old location,
 # pointing to the new one, but people seem to get it wrong all the time.
@@ -660,7 +662,7 @@ drbd_update_master_score() {
 }
 
 is_drbd_enabled() {
-	test -f /proc/drbd
+	test -f $PROC_DRBD
 }
 
 #######################################################################

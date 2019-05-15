@@ -7,6 +7,8 @@
 #
 ###
 
+PROC_DRBD=$UMC_FS_ROOT/proc/drbd
+
 DEFAULTFILE="/etc/default/drbd"
 DRBDADM="/sbin/drbdadm"
 
@@ -35,7 +37,7 @@ fi
 drbd_set_role_from_proc_drbd()
 {
 	local out
-	if ! test -e /proc/drbd; then
+	if ! test -e $PROC_DRBD; then
 		ROLE="Unconfigured"
 		return
 	fi
@@ -51,7 +53,7 @@ drbd_set_role_from_proc_drbd()
 		return
 	fi
 
-	if out=$(sed -ne "/^ *$minor: cs:/ { s/:/ /g; p; q; }" /proc/drbd); then
+	if out=$(sed -ne "/^ *$minor: cs:/ { s/:/ /g; p; q; }" $PROC_DRBD); then
 		set -- $out
 		ROLE=${5%/*}
 		: ${ROLE:=Unconfigured} # if it does not show up
@@ -103,7 +105,7 @@ case "$CMD" in
 		# report it as possibly running, so heartbeat can, after failed
 		# stop, do a recovery by reboot.
 		# drbdsetup may fail for obscure reasons, e.g. if /var/lock/ is
-		# suddenly readonly.  So we retry by parsing /proc/drbd.
+		# suddenly readonly.  So we retry by parsing $PROC_DRBD.
 		drbd_set_role_from_proc_drbd
 	esac
 	case $ROLE in

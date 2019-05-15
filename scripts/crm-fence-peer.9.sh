@@ -3,6 +3,8 @@
 
 export LANG=C LC_ALL=C TZ=":/etc/localtime"
 
+PROC_DRBD=$UMC_FS_ROOT/proc/drbd
+
 grep_rsc_location()
 {
 	# expected input: exactly one tag per line: "^[[:space:]]*<.*/?>$"
@@ -1130,7 +1132,7 @@ set_states_from_proc_drbd()
 	status_pdsk_all_up_to_date=true
 
 	IFS=$'\n'
-	lines=($(sed -nre "/^ *$DRBD_MINOR: cs:/ { s/:/ /g; p; }" /proc/drbd))
+	lines=($(sed -nre "/^ *$DRBD_MINOR: cs:/ { s/:/ /g; p; }" $PROC_DRBD))
 	IFS=$' \t\n'
 
 	i=0

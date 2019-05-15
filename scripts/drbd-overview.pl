@@ -13,7 +13,7 @@ $ENV{LANGUAGE} = 'C';
 #use Data::Dumper;
 
 # globals
-my $PROC_DRBD = "/proc/drbd";
+my $PROC_DRBD = $ENV{UMC_FS_ROOT}."/proc/drbd";
 my ($HOSTNAME) = (`uname -n` =~ /(\S+)/);
 my $stderr_to_dev_null = 1;
 my $watch = 0;

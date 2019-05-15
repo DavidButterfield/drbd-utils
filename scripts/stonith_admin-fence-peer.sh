@@ -18,6 +18,8 @@
 # causes DRBD devices with the "resource-and-stonith"
 # fencing policy to remain suspended).
 
+PROC_DRBD=$UMC_FS_ROOT/proc/drbd
+
 log() {
   local msg
   msg="$1"
@@ -40,8 +42,8 @@ die_unless_all_minors_up_to_date()
 	local minor_regex="^ *($*): cs:"
 	IFS=$_OLDIFS
 
-	# grep -c -Ee '^ *(m|i|n|o|r|s): cs:.* ds:UpToDate' /proc/drbd
-	local proc_drbd=$(cat /proc/drbd)
+	# grep -c -Ee '^ *(m|i|n|o|r|s): cs:.* ds:UpToDate' $PROC_DRBD
+	local proc_drbd=$(cat $PROC_DRBD)
 	local minors_of_resource=$(echo "$proc_drbd" | grep -E -e "$minor_regex")
 	local n_up_to_date=$(echo "$minors_of_resource" | grep -c -e "ds:UpToDate")
 

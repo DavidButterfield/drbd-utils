@@ -1,5 +1,6 @@
 #!/bin/bash
 #
+PROC_DRBD=$UMC_FS_ROOT/proc/drbd
 
 export LANG=C LC_ALL=C TZ=":/etc/localtime"
 
@@ -752,7 +753,7 @@ set_states_from_proc_drbd()
 	DRBD_pdsk_all_uptodate=true
 
 	IFS=$'\n'
-	lines=($(sed -nre "/^ *$DRBD_MINOR: cs:/ { s/:/ /g; p; }" /proc/drbd))
+	lines=($(sed -nre "/^ *$DRBD_MINOR: cs:/ { s/:/ /g; p; }" $PROC_DRBD))
 	IFS=$' \t\n'
 
 	i=0

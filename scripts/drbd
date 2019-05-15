@@ -35,7 +35,7 @@
 DEFAULTFILE="/etc/default/drbd"
 DRBDADM="drbdadm"
 DRBDSETUP="drbdsetup"
-PROC_DRBD="/proc/drbd"
+PROC_DRBD="$UMC_FS_ROOT/proc/drbd"
 MODPROBE="/sbin/modprobe"
 RMMOD="/sbin/rmmod"
 UDEV_TIMEOUT=10
@@ -198,7 +198,7 @@ case "$1" in
 	# Now handle stacked devices, if any
 	STACKED_RESOURCES=""
 	# no point trying stacking, if we don't have at least one primary.
-	if grep -w Primary /proc/drbd &> /dev/null; then
+	if grep -w Primary $PROC_DRBD &> /dev/null; then
 	    # heuristic: don't mess with dinosaurs # :-(
 	    if ! grep -Ee '\<drbddisk|drbdupper\>' /etc/ha.d/haresources &> /dev/null; then
 		STACKED_RESOURCES=`$DRBDADM -S sh-resources`

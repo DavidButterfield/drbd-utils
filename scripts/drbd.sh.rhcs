@@ -21,6 +21,11 @@
 #
 # DRBD resource management using the drbdadm utility.
 #
+if [ -z $UMC_FS_ROOT ]; then
+    CHECK_MODLOAD=1
+else
+    CHECK_MODLOAD=0
+fi
 
 LC_ALL=C
 LANG=C
@@ -37,10 +42,12 @@ drbd_verify_all()
 	return $OCF_ERR_INSTALLED
     fi
 
-    # Is drbd loaded?
-    if ! grep drbd /proc/modules >/dev/null 2>&1; then
-	ocf_log error "drbd not found in /proc/modules. Do you need to modprobe?"
-	return $OCF_ERR_INSTALLED
+    if [ $CHECK_MODLOAD ]; then
+	# Is drbd loaded?
+	if ! grep drbd /proc/modules >/dev/null 2>&1; then
+	    ocf_log error "drbd not found in /proc/modules. Do you need to modprobe?"
+	    return $OCF_ERR_INSTALLED
+	fi
     fi
 
     # Do we have the "resource" parameter?

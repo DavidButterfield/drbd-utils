@@ -1,7 +1,15 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <string.h>
 #include "drbdtool_common.h"
+
+/* Set this environment variable to the UMC fuse mount point to control a
+ * usermode DRBD server rather than a kernel-based server.
+ */
+#define UMC_FS_ROOT_ENV "UMC_FS_ROOT"
+
+#define PROC_DRBD "/proc/drbd"
 
 extern struct version __drbd_driver_version;
 
@@ -13,7 +21,14 @@ static char *slurp_proc_drbd()
 	char *buffer;
 	int rr, fd;
 
-	fd = open("/proc/drbd",O_RDONLY);
+	char proc_name[64];
+	const char *root = getenv(UMC_FS_ROOT_ENV);
+	if (snprintf(proc_name, sizeof(proc_name), "%s%s", root?:"", PROC_DRBD) >= sizeof(proc_name)) {
+		fprintf(stderr, "WARNING: ignoring bad environment %s='%s'\n", UMC_FS_ROOT_ENV, root);
+		strncpy(proc_name, PROC_DRBD, sizeof(proc_name));
+	}
+
+	fd = open(proc_name, O_RDONLY);
 	if (fd == -1)
 		return NULL;
 
